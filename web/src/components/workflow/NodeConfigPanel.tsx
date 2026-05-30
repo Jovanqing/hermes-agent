@@ -255,13 +255,125 @@ function OutputConfig({ data, onUpdate }: { data: OutputNodeData; onUpdate: (d: 
 // Branch config
 // ---------------------------------------------------------------------------
 
+interface Condition {
+  id: string;
+  outputPort: string;
+  evaluatorType: 'prompt' | 'regex' | 'json_path';
+  evaluatorConfig: Record<string, unknown>;
+}
+
+function ConditionConfigPanel({
+  condition,
+  onChange,
+}: {
+  condition: Condition;
+  onChange: (config: Record<string, unknown>) => void;
+}) {
+  const config = condition.evaluatorConfig;
+
+  switch (condition.evaluatorType) {
+    case 'regex':
+      return (
+        <div className="space-y-2 mt-2 pl-3 border-l-2 border-amber-500/30">
+          <InputField
+            label="Pattern"
+            value={(config.pattern as string) ?? ''}
+            onChange={(v) => onChange({ ...config, pattern: v })}
+            placeholder="success|completed"
+          />
+          <InputField
+            label="Input Path"
+            value={(config.input_path as string) ?? ''}
+            onChange={(v) => onChange({ ...config, input_path: v })}
+            placeholder="agent_1.output"
+          />
+          <InputField
+            label="Flags (i=ignore case, m=multiline)"
+            value={(config.flags as string) ?? ''}
+            onChange={(v) => onChange({ ...config, flags: v })}
+            placeholder="i"
+          />
+        </div>
+      );
+
+    case 'json_path':
+      return (
+        <div className="space-y-2 mt-2 pl-3 border-l-2 border-amber-500/30">
+          <InputField
+            label="Path"
+            value={(config.path as string) ?? ''}
+            onChange={(v) => onChange({ ...config, path: v })}
+            placeholder="agent_1.output.status"
+          />
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Operator</label>
+            <select
+              value={(config.operator as string) ?? 'eq'}
+              onChange={(e) => onChange({ ...config, operator: e.target.value })}
+              className="w-full px-2 py-1 text-xs bg-background border border-border rounded"
+            >
+              <option value="exists">exists</option>
+              <option value="eq">equals (==)</option>
+              <option value="ne">not equals (!=)</option>
+              <option value="gt">greater than (&gt;)</option>
+              <option value="lt">less than (&lt;)</option>
+              <option value="gte">greater or equal (&gt;=)</option>
+              <option value="lte">less or equal (&lt;=)</option>
+              <option value="contains">contains</option>
+            </select>
+          </div>
+          {(config.operator as string) !== 'exists' && (
+            <InputField
+              label="Value"
+              value={String(config.value ?? '')}
+              onChange={(v) => onChange({ ...config, value: v })}
+              placeholder="success"
+            />
+          )}
+        </div>
+      );
+
+    case 'prompt':
+      return (
+        <div className="space-y-2 mt-2 pl-3 border-l-2 border-amber-500/30">
+          <TextArea
+            label="Prompt (use {{input}} for value)"
+            value={(config.prompt as string) ?? ''}
+            onChange={(v) => onChange({ ...config, prompt: v })}
+            placeholder="Does this indicate success? {{input}}"
+            rows={3}
+          />
+          <InputField
+            label="Input Path"
+            value={(config.input_path as string) ?? ''}
+            onChange={(v) => onChange({ ...config, input_path: v })}
+            placeholder="agent_1.output"
+          />
+          <InputField
+            label="True Patterns (comma-separated)"
+            value={((config.true_patterns as string[]) ?? ['yes', 'true']).join(', ')}
+            onChange={(v) => onChange({ ...config, true_patterns: v.split(',').map((s) => s.trim()).filter(Boolean) })}
+            placeholder="yes, true, 1"
+          />
+        </div>
+      );
+
+    default:
+      return null;
+  }
+}
+
 function BranchConfig({ data, onUpdate }: { data: BranchNodeData; onUpdate: (d: Partial<BranchNodeData>) => void }) {
   const addCondition = useCallback(() => {
-    const newCondition = {
+    const newCondition: Condition = {
       id: `cond-${Date.now()}`,
       outputPort: `port-${(data.conditions?.length ?? 0) + 1}`,
-      evaluatorType: 'prompt' as const,
-      evaluatorConfig: {},
+      evaluatorType: 'json_path' as const,
+      evaluatorConfig: {
+        path: '',
+        operator: 'eq',
+        value: '',
+      },
     };
     onUpdate({ conditions: [...(data.conditions ?? []), newCondition] });
   }, [data.conditions, onUpdate]);
@@ -273,58 +385,87 @@ function BranchConfig({ data, onUpdate }: { data: BranchNodeData; onUpdate: (d: 
     [data.conditions, onUpdate]
   );
 
+  const updateCondition = useCallback(
+    (id: string, updates: Partial<Condition>) => {
+      const updated = (data.conditions ?? []).map((c) =>
+        c.id === id ? { ...c, ...updates } : c
+      );
+      onUpdate({ conditions: updated });
+    },
+    [data.conditions, onUpdate]
+  );
+
+  const updateConditionConfig = useCallback(
+    (id: string, config: Record<string, unknown>) => {
+      const updated = (data.conditions ?? []).map((c) =>
+        c.id === id ? { ...c, evaluatorConfig: config } : c
+      );
+      onUpdate({ conditions: updated });
+    },
+    [data.conditions, onUpdate]
+  );
+
   return (
     <>
       <InputField label="Name" value={data.name} onChange={(v) => onUpdate({ name: v })} placeholder="Branch name" />
 
       <SectionTitle>Default Output</SectionTitle>
       <InputField
-        label="Default Port"
+        label="Default Port (used when no condition matches)"
         value={data.defaultOutput ?? 'default'}
         onChange={(v) => onUpdate({ defaultOutput: v })}
         placeholder="default"
       />
 
-      <SectionTitle>Conditions</SectionTitle>
-      <div className="space-y-2">
-        {(data.conditions ?? []).map((cond) => (
-          <div key={cond.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
-            <input
-              value={cond.outputPort}
-              onChange={(e) => {
-                const updated = (data.conditions ?? []).map((c) =>
-                  c.id === cond.id ? { ...c, outputPort: e.target.value } : c
-                );
-                onUpdate({ conditions: updated });
-              }}
-              className="flex-1 px-2 py-1 text-xs bg-background border border-border rounded"
-              placeholder="Port name"
+      <SectionTitle>Conditions (first match wins)</SectionTitle>
+      <div className="space-y-3">
+        {(data.conditions ?? []).map((cond, index) => (
+          <div key={cond.id} className="p-2 bg-muted/30 rounded border border-border/50">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs text-muted-foreground">#{index + 1}</span>
+              <input
+                value={cond.outputPort}
+                onChange={(e) => updateCondition(cond.id, { outputPort: e.target.value })}
+                className="flex-1 px-2 py-1 text-xs bg-background border border-border rounded"
+                placeholder="Output port name"
+              />
+              <select
+                value={cond.evaluatorType}
+                onChange={(e) => {
+                  const newType = e.target.value as Condition['evaluatorType'];
+                  // Reset config when changing type
+                  const defaultConfig: Record<string, Record<string, unknown>> = {
+                    regex: { pattern: '', input_path: '', flags: 'i' },
+                    json_path: { path: '', operator: 'eq', value: '' },
+                    prompt: { prompt: '', input_path: '', true_patterns: ['yes', 'true'] },
+                  };
+                  updateCondition(cond.id, {
+                    evaluatorType: newType,
+                    evaluatorConfig: defaultConfig[newType] ?? {},
+                  });
+                }}
+                className="px-2 py-1 text-xs bg-background border border-border rounded"
+              >
+                <option value="json_path">JSON Path</option>
+                <option value="regex">Regex</option>
+                <option value="prompt">AI Prompt</option>
+              </select>
+              <button
+                onClick={() => removeCondition(cond.id)}
+                className="p-1 text-destructive hover:bg-destructive/10 rounded"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+            <ConditionConfigPanel
+              condition={cond}
+              onChange={(config) => updateConditionConfig(cond.id, config)}
             />
-            <select
-              value={cond.evaluatorType}
-              onChange={(e) => {
-                const updated = (data.conditions ?? []).map((c) =>
-                  c.id === cond.id ? { ...c, evaluatorType: e.target.value as typeof cond.evaluatorType } : c
-                );
-                onUpdate({ conditions: updated });
-              }}
-              className="px-2 py-1 text-xs bg-background border border-border rounded"
-            >
-              <option value="prompt">AI</option>
-              <option value="regex">Regex</option>
-              <option value="json_path">JSON Path</option>
-            </select>
-            <button
-              onClick={() => removeCondition(cond.id)}
-              className="p-1 text-destructive hover:bg-destructive/10 rounded"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
           </div>
         ))}
         <button
           onClick={addCondition}
-          className="w-full py-1.5 text-xs text-primary hover:bg-primary/10 rounded border border-dashed border-primary/30"
+          className="w-full py-2 text-xs text-primary hover:bg-primary/10 rounded border border-dashed border-primary/30"
         >
           + Add Condition
         </button>

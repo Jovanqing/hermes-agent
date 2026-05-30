@@ -203,12 +203,16 @@ class TransformNodeExecutor(BaseNodeExecutor):
             )
 
 
-def register_simple_executors(registry) -> None:
+def register_simple_executors(registry, llm_provider=None) -> None:
     """Register all simple node executors with a registry.
 
     Args:
         registry: NodeExecutorRegistry to register with
+        llm_provider: Optional LLM provider for branch evaluation
     """
+    from workflow.nodes.branch_node import BranchNodeExecutor
+
     registry.register("input", InputNodeExecutor())
     registry.register("output", OutputNodeExecutor())
     registry.register("transform", TransformNodeExecutor())
+    registry.register("branch", BranchNodeExecutor(llm_provider=llm_provider))
