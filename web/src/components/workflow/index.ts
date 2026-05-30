@@ -4,6 +4,7 @@
 
 export { WorkflowCanvas } from './WorkflowCanvas';
 export { NodeConfigPanel } from './NodeConfigPanel';
+export { ContextViewer } from './ContextViewer';
 export {
   useWorkflowStore,
   selectNode,

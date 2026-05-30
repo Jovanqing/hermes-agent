@@ -4,17 +4,19 @@
  * Provides:
  * - Visual canvas for creating workflows
  * - Node configuration panel
+ * - Context inspector for debugging
  * - Workflow execution and monitoring with real-time streaming
  */
 
 import { useEffect, useCallback, useState } from 'react';
 import { usePageHeader } from '@/contexts/usePageHeader';
-import { Save, FolderOpen, Plus, Wifi, WifiOff } from 'lucide-react';
+import { Save, FolderOpen, Plus, Wifi, WifiOff, Eye } from 'lucide-react';
 import { Button } from '@nous-research/ui/ui/components/button';
 
 import {
   WorkflowCanvas,
   NodeConfigPanel,
+  ContextViewer,
   useWorkflowStore,
   selectSelectedNode,
 } from '@/components/workflow';
@@ -30,6 +32,7 @@ import {
 export default function WorkflowPage() {
   const { setTitle } = usePageHeader();
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [showContextViewer, setShowContextViewer] = useState(false);
 
   const {
     workflowId,
@@ -144,6 +147,9 @@ export default function WorkflowPage() {
     setStreamError(null);
   }, []);
 
+  // Determine which side panel to show
+  const showSidePanel = selectedNode || showContextViewer;
+
   return (
     <div className="flex h-full">
       {/* Main canvas area */}
@@ -179,6 +185,17 @@ export default function WorkflowPage() {
           )}
 
           <div className="flex-1" />
+
+          {/* Context viewer toggle */}
+          <Button
+            ghost
+            size="sm"
+            onClick={() => setShowContextViewer(!showContextViewer)}
+            className={showContextViewer ? 'bg-primary/10 text-primary' : ''}
+          >
+            <Eye className="w-4 h-4 mr-1" />
+            Context
+          </Button>
 
           <Button ghost size="sm" onClick={handleNew}>
             <Plus className="w-4 h-4 mr-1" />
@@ -216,8 +233,18 @@ export default function WorkflowPage() {
         </div>
       </div>
 
-      {/* Config panel */}
-      {selectedNode && <NodeConfigPanel />}
+      {/* Side panel: Node config or Context viewer */}
+      {showSidePanel && (
+        <div className="w-80 border-l border-border bg-card overflow-y-auto">
+          {selectedNode ? (
+            <NodeConfigPanel />
+          ) : showContextViewer ? (
+            <div className="p-4">
+              <ContextViewer />
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
