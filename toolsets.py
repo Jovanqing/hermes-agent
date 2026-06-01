@@ -274,6 +274,20 @@ TOOLSETS = {
         "includes": [],
     },
 
+    "revit": {
+        "description": (
+            "Revit BIM modeling tools — create and modify building elements "
+            "in Autodesk Revit via the VibeBuilding pyRevit extension. "
+            "Requires Revit 2025 running with the extension loaded."
+        ),
+        "tools": [
+            "revit_health", "revit_get_levels", "revit_get_wall_types",
+            "revit_list_walls", "revit_create_wall", "revit_create_room",
+            "revit_build_floor", "revit_get_model_info",
+        ],
+        "includes": [],
+    },
+
     "discord": {
         "description": "Discord read and participate tools (fetch messages, search members, create threads)",
         "tools": ["discord"],
