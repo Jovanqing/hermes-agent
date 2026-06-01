@@ -132,9 +132,9 @@ class BuildingCodeValidator:
         for window in model_data.get("windows", []):
             self._validate_window(window, model_data, result)
 
-        # Validate ceiling heights
-        for level in model_data.get("levels", []):
-            self._validate_ceiling_height(level, result)
+        # Validate ceiling heights (calculate from level elevations)
+        levels = model_data.get("levels", [])
+        self._validate_ceiling_heights(levels, result)
 
     def _validate_room(self, room: Dict, result: ValidationResult):
         """Validate room dimensions"""
@@ -215,21 +215,40 @@ class BuildingCodeValidator:
                 limit=self.MIN_WINDOW_RATIO,
             ))
 
-    def _validate_ceiling_height(self, level: Dict, result: ValidationResult):
-        """Validate ceiling height"""
-        height = level.get("height", 0)
-        level_id = level.get("id", "")
+    def _validate_ceiling_heights(self, levels: List[Dict], result: ValidationResult):
+        """Validate ceiling heights by calculating from level elevations"""
+        if len(levels) < 2:
+            return
 
-        if height < self.MIN_CEILING_HEIGHT:
-            result.add_issue(ValidationIssue(
-                category="Building Code",
-                severity=Severity.ERROR,
-                message=f"Ceiling height {height:.2f}m below minimum {self.MIN_CEILING_HEIGHT}m",
-                suggestion=f"Increase ceiling height to at least {self.MIN_CEILING_HEIGHT}m",
-                element_id=level_id,
-                value=height,
-                limit=self.MIN_CEILING_HEIGHT,
-            ))
+        # Sort levels by elevation
+        sorted_levels = sorted(levels, key=lambda x: x.get("elevation_m", 0))
+
+        # Calculate ceiling height for each level (except the top one)
+        for i in range(len(sorted_levels) - 1):
+            current_level = sorted_levels[i]
+            next_level = sorted_levels[i + 1]
+
+            current_elev = current_level.get("elevation_m", 0)
+            next_elev = next_level.get("elevation_m", 0)
+            ceiling_height = next_elev - current_elev
+
+            level_id = current_level.get("id", "")
+            level_name = current_level.get("name", f"Level {i+1}")
+
+            # Skip basement levels (negative elevation)
+            if current_elev < 0:
+                continue
+
+            if ceiling_height < self.MIN_CEILING_HEIGHT:
+                result.add_issue(ValidationIssue(
+                    category="Building Code",
+                    severity=Severity.ERROR,
+                    message=f"{level_name} ceiling height {ceiling_height:.2f}m below minimum {self.MIN_CEILING_HEIGHT}m",
+                    suggestion=f"Increase ceiling height to at least {self.MIN_CEILING_HEIGHT}m",
+                    element_id=level_id,
+                    value=ceiling_height,
+                    limit=self.MIN_CEILING_HEIGHT,
+                ))
 
 
 class StructuralValidator:
@@ -520,7 +539,9 @@ def extract_model_data(revit_api) -> Dict:
     try:
         # Get walls
         walls_data = revit_api.list_walls()
-        if isinstance(walls_data, dict):
+        if isinstance(walls_data, list):
+            model_data["walls"] = walls_data
+        elif isinstance(walls_data, dict):
             model_data["walls"] = walls_data.get("walls", [])
     except Exception:
         # Revit API not available or failed
@@ -529,7 +550,9 @@ def extract_model_data(revit_api) -> Dict:
     try:
         # Get levels
         levels_data = revit_api.get_levels()
-        if isinstance(levels_data, dict):
+        if isinstance(levels_data, list):
+            model_data["levels"] = levels_data
+        elif isinstance(levels_data, dict):
             model_data["levels"] = levels_data.get("levels", [])
     except Exception:
         pass
@@ -538,7 +561,9 @@ def extract_model_data(revit_api) -> Dict:
         # Get rooms (if available)
         if hasattr(revit_api, 'list_rooms'):
             rooms_data = revit_api.list_rooms()
-            if isinstance(rooms_data, dict):
+            if isinstance(rooms_data, list):
+                model_data["rooms"] = rooms_data
+            elif isinstance(rooms_data, dict):
                 model_data["rooms"] = rooms_data.get("rooms", [])
     except Exception:
         pass
@@ -547,7 +572,9 @@ def extract_model_data(revit_api) -> Dict:
         # Get doors (if available)
         if hasattr(revit_api, 'list_doors'):
             doors_data = revit_api.list_doors()
-            if isinstance(doors_data, dict):
+            if isinstance(doors_data, list):
+                model_data["doors"] = doors_data
+            elif isinstance(doors_data, dict):
                 model_data["doors"] = doors_data.get("doors", [])
     except Exception:
         pass
@@ -556,7 +583,9 @@ def extract_model_data(revit_api) -> Dict:
         # Get windows (if available)
         if hasattr(revit_api, 'list_windows'):
             windows_data = revit_api.list_windows()
-            if isinstance(windows_data, dict):
+            if isinstance(windows_data, list):
+                model_data["windows"] = windows_data
+            elif isinstance(windows_data, dict):
                 model_data["windows"] = windows_data.get("windows", [])
     except Exception:
         pass
@@ -565,15 +594,16 @@ def extract_model_data(revit_api) -> Dict:
         # Get floors (if available)
         if hasattr(revit_api, 'list_floors'):
             floors_data = revit_api.list_floors()
-            if isinstance(floors_data, dict):
+            if isinstance(floors_data, list):
+                model_data["floors"] = floors_data
+            elif isinstance(floors_data, dict):
                 model_data["floors"] = floors_data.get("floors", [])
     except Exception:
         pass
 
-    # Calculate gross area (simplified - use first floor footprint)
-    if model_data["walls"]:
-        # Estimate from wall bounding box
-        # In reality, would use Revit API to get floor area
-        pass
+    # Calculate gross area from rooms
+    if model_data["rooms"]:
+        total_area = sum(room.get("area", 0) for room in model_data["rooms"])
+        model_data["gross_area"] = total_area
 
     return model_data

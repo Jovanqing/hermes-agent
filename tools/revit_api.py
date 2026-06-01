@@ -212,3 +212,71 @@ def create_l_shaped_room(
         "room2": room2,
         "total_area_sqm": room1.get("area_sqm", 0) + room2.get("area_sqm", 0)
     }
+
+
+def list_rooms() -> List[Dict[str, Any]]:
+    """
+    列出模型中所有房间
+
+    Returns:
+        房间列表，每个房间包含 id, name, area, level 等信息
+    """
+    result = _make_request("rooms")
+    return result.get("rooms", [])
+
+
+def list_doors() -> List[Dict[str, Any]]:
+    """
+    列出模型中所有门
+
+    Returns:
+        门列表，每个门包含 id, type, width, level 等信息
+    """
+    result = _make_request("doors")
+    return result.get("doors", [])
+
+
+def list_windows() -> List[Dict[str, Any]]:
+    """
+    列出模型中所有窗户
+
+    Returns:
+        窗户列表，每个窗户包含 id, type, width, height, level 等信息
+    """
+    result = _make_request("windows")
+    return result.get("windows", [])
+
+
+def list_floors() -> List[Dict[str, Any]]:
+    """
+    列出模型中所有楼板
+
+    Returns:
+        楼板列表，每个楼板包含 id, area, level 等信息
+    """
+    result = _make_request("floors")
+    return result.get("floors", [])
+
+
+def get_model_summary() -> Dict[str, Any]:
+    """
+    获取模型摘要信息
+
+    Returns:
+        包含各类构件数量的摘要字典
+    """
+    summary = {
+        "levels": len(get_levels()),
+        "walls": len(list_walls()),
+        "rooms": len(list_rooms()),
+        "doors": len(list_doors()),
+        "windows": len(list_windows()),
+        "floors": len(list_floors()),
+    }
+
+    # 计算总面积
+    rooms = list_rooms()
+    total_area = sum(room.get("area", 0) for room in rooms)
+    summary["total_area_sqm"] = total_area
+
+    return summary
