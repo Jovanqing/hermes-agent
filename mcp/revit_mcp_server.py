@@ -308,6 +308,137 @@ def revit_build_floor(
     }, ensure_ascii=False)
 
 
+# ---------------------------------------------------------------------------
+# Family / Type Discovery Tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def revit_list_families(category: str = "", name: str = "") -> str:
+    """List available family symbols (door types, window types, furniture, etc.).
+
+    Args:
+        category: Filter by category: doors, windows, furniture, columns, floors, roofs
+        name: Filter by name substring
+    """
+    params = []
+    if category:
+        params.append(f"category={category}")
+    if name:
+        params.append(f"name={name}")
+    query = "&".join(params)
+    path = f"model/families?{query}" if query else "model/families"
+    result = _revit_request("GET", path)
+    return json.dumps(result, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Door Tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def revit_place_door(
+    wall_id: int,
+    position_x: float,
+    position_y: float = 0.0,
+    level: str = "Level 1",
+) -> str:
+    """Place a door in an existing wall.
+
+    Args:
+        wall_id: The Revit element ID of the host wall
+        position_x: X coordinate along the wall in meters
+        position_y: Y coordinate in meters (usually 0)
+        level: Level name (default: "Level 1")
+    """
+    data = {
+        "wall_id": wall_id,
+        "position": {"x": position_x, "y": position_y},
+        "level": level,
+    }
+    result = _revit_request("POST", "doors", data)
+    return json.dumps(result, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Window Tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def revit_place_window(
+    wall_id: int,
+    position_x: float,
+    position_y: float = 0.0,
+    level: str = "Level 1",
+) -> str:
+    """Place a window in an existing wall.
+
+    Args:
+        wall_id: The Revit element ID of the host wall
+        position_x: X coordinate along the wall in meters
+        position_y: Y coordinate in meters (usually 0)
+        level: Level name (default: "Level 1")
+    """
+    data = {
+        "wall_id": wall_id,
+        "position": {"x": position_x, "y": position_y},
+        "level": level,
+    }
+    result = _revit_request("POST", "windows", data)
+    return json.dumps(result, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Floor Tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def revit_create_floor(
+    corners: str,
+    level: str = "Level 1",
+) -> str:
+    """Create a floor slab from a polygon outline.
+
+    Args:
+        corners: JSON string of corner points, e.g. '[{"x":0,"y":0},{"x":14,"y":0},{"x":14,"y":10},{"x":0,"y":10}]'
+        level: Level name (default: "Level 1")
+    """
+    try:
+        corner_list = json.loads(corners)
+    except json.JSONDecodeError:
+        return json.dumps({"error": "Invalid JSON for corners"})
+
+    data = {
+        "corners": corner_list,
+        "level": level,
+    }
+    result = _revit_request("POST", "floors", data)
+    return json.dumps(result, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Full Villa Build
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def revit_build_villa(
+    steps: str = "levels,grids,walls,floors,roof,windows,doors,rooms",
+) -> str:
+    """Build the complete two-story VibeVilla (14m x 10m, ~250 sqm).
+
+    Creates a full villa with 16 rooms across 2 floors, including walls,
+    floors, windows, doors, and room labels.
+
+    Args:
+        steps: Comma-separated build steps to execute. Available:
+               levels, grids, walls, floors, roof, windows, doors, rooms
+               Default: all steps
+    """
+    step_list = [s.strip() for s in steps.split(",")]
+    data = {"steps": step_list}
+    result = _revit_request("POST", "villa/build", data)
+    return json.dumps(result, ensure_ascii=False)
+
+
 # =============================================================================
 # Entry Point
 # =============================================================================

@@ -1,0 +1,71 @@
+{
+  "agent": {
+    "name": "VibeBuilding AI",
+    "description": "AI 驱动的 Revit 建筑建模助手",
+    "model": "gpt-4",
+    "temperature": 0.7,
+    "max_tokens": 4000
+  },
+  "system_prompt": "你是一个专业的建筑建模助手，帮助用户在 Revit 中创建建筑构件。你可以创建墙体、房间、楼板等构件。用户会用自然语言描述他们的需求，你需要理解意图并调用相应的 Revit API 函数。\n\n可用的工具：\n- create_wall(start_x, start_y, end_x, end_y, height, level): 创建一面墙体\n- create_room(x1, y1, x2, y2, height, level): 创建一个矩形房间（4面墙）\n- list_walls(): 列出所有墙体\n- get_levels(): 获取所有标高\n- delete_wall(wall_id): 删除指定墙体\n\n坐标系说明：\n- X 轴：东西方向（正方向为东）\n- Y 轴：南北方向（正方向为北）\n- Z 轴：垂直方向（正方向为上）\n- 单位：米\n\n回复时使用中文，简洁明了。创建构件后报告结果（尺寸、位置等）。",
+  "tools": [
+    {
+      "name": "create_wall",
+      "description": "创建一面墙体",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "start_x": {"type": "number", "description": "起点 X 坐标（米）"},
+          "start_y": {"type": "number", "description": "起点 Y 坐标（米）"},
+          "end_x": {"type": "number", "description": "终点 X 坐标（米）"},
+          "end_y": {"type": "number", "description": "终点 Y 坐标（米）"},
+          "height": {"type": "number", "description": "墙体高度（米）", "default": 3.0},
+          "level": {"type": "string", "description": "标高名称", "default": "Level 1"}
+        },
+        "required": ["start_x", "start_y", "end_x", "end_y"]
+      }
+    },
+    {
+      "name": "create_room",
+      "description": "创建一个矩形房间（4面墙）",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "x1": {"type": "number", "description": "房间左下角 X 坐标（米）"},
+          "y1": {"type": "number", "description": "房间左下角 Y 坐标（米）"},
+          "x2": {"type": "number", "description": "房间右上角 X 坐标（米）"},
+          "y2": {"type": "number", "description": "房间右上角 Y 坐标（米）"},
+          "height": {"type": "number", "description": "墙体高度（米）", "default": 3.0},
+          "level": {"type": "string", "description": "标高名称", "default": "Level 1"}
+        },
+        "required": ["x1", "y1", "x2", "y2"]
+      }
+    },
+    {
+      "name": "list_walls",
+      "description": "列出所有墙体",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_levels",
+      "description": "获取所有标高",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "delete_wall",
+      "description": "删除指定 ID 的墙体",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "wall_id": {"type": "integer", "description": "墙体 ID"}
+        },
+        "required": ["wall_id"]
+      }
+    }
+  ]
+}
