@@ -1,0 +1,13 @@
+{
+    "builtin": "False",
+    "default_enabled": "True",
+    "type": "extension",
+    "rocket_mode_compatible": "True",
+    "name": "VibeBuilding",
+    "description": "Natural Language Driven BIM Modeling via AI",
+    "author": "VibeBuilding",
+    "url": "",
+    "website": "",
+    "image": "",
+    "dependencies": []
+}
