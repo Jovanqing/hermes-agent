@@ -20,10 +20,13 @@ from tools import revit_api
 validator = DesignValidator()
 
 
-def revit_validate_design() -> str:
+def revit_validate_design(building_type: str = "residential") -> str:
     """
     Validate the current Revit design against building codes, structural requirements,
     design patterns, and optimization criteria.
+
+    Args:
+        building_type: Type of building (residential, commercial, office, healthcare)
 
     Returns validation report with issues and suggestions.
 
@@ -35,7 +38,7 @@ def revit_validate_design() -> str:
         model_data = extract_model_data(revit_api)
 
         # Run validation
-        result = validator.validate(model_data)
+        result = validator.validate(model_data, building_type)
 
         # Format report
         report = {
@@ -306,7 +309,7 @@ def revit_learn_from_design(design_type: str = "", lessons: str = "") -> str:
     try:
         # Validate current design
         model_data = extract_model_data(revit_api)
-        result = validator.validate(model_data)
+        result = validator.validate(model_data, design_type or "residential")
 
         # Extract patterns from validation
         patterns = []
@@ -363,7 +366,18 @@ def revit_learn_from_design(design_type: str = "", lessons: str = "") -> str:
 MCP_TOOLS = [
     {
         "name": "revit_validate_design",
-        "description": "Validate current Revit design against building codes, structural requirements, and best practices",
+        "description": "Validate current Revit design against building codes, structural requirements, and best practices. Supports building types: residential, commercial, office, healthcare.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "building_type": {
+                    "type": "string",
+                    "description": "Building type (residential, commercial, office, healthcare)",
+                    "enum": ["residential", "commercial", "office", "healthcare"],
+                    "default": "residential"
+                }
+            }
+        },
         "handler": revit_validate_design,
     },
     {

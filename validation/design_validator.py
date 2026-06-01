@@ -66,8 +66,11 @@ class DesignValidator:
         self.structural = StructuralValidator()
         self.patterns = PatternValidator()
         self.optimization = OptimizationValidator()
+        self.commercial = CommercialBuildingValidator()
+        self.office = OfficeBuildingValidator()
+        self.healthcare = HealthcareBuildingValidator()
 
-    def validate(self, model_data: Dict) -> ValidationResult:
+    def validate(self, model_data: Dict, building_type: str = "residential") -> ValidationResult:
         """
         Validate complete design
 
@@ -79,17 +82,26 @@ class DesignValidator:
                 - windows: List of window dicts
                 - floors: List of floor dicts
                 - levels: List of level dicts
+            building_type: Type of building (residential, commercial, office, healthcare)
 
         Returns:
             ValidationResult with issues and score
         """
         result = ValidationResult()
 
-        # Run all validators
+        # Run common validators
         self.building_code.validate(model_data, result)
         self.structural.validate(model_data, result)
         self.patterns.validate(model_data, result)
         self.optimization.validate(model_data, result)
+
+        # Run building type specific validators
+        if building_type == "commercial":
+            self.commercial.validate(model_data, result)
+        elif building_type == "office":
+            self.office.validate(model_data, result)
+        elif building_type == "healthcare":
+            self.healthcare.validate(model_data, result)
 
         return result
 
@@ -512,6 +524,253 @@ class OptimizationValidator:
                 value=deviation,
                 limit=45,
             ))
+
+
+class CommercialBuildingValidator:
+    """Validates commercial buildings (retail, malls, restaurants)"""
+
+    # Minimum ceiling heights by area type (GB 50352-2019)
+    MIN_CEILING_HEIGHTS = {
+        "retail": 4.5,
+        "supermarket": 4.2,
+        "restaurant": 3.6,
+        "back_of_house": 2.8,
+    }
+
+    # Minimum corridor widths
+    MIN_CORRIDOR_WIDTHS = {
+        "main_aisle": 2.5,
+        "secondary_aisle": 1.8,
+        "exit_corridor": 1.4,
+    }
+
+    def validate(self, model_data: Dict, result: ValidationResult):
+        """Validate commercial building design"""
+        rooms = model_data.get("rooms", [])
+
+        # Validate ceiling heights
+        for room in rooms:
+            room_type = room.get("type", "").lower()
+            ceiling_height = room.get("height", 0)
+
+            # Map room types to commercial categories
+            commercial_type = None
+            if any(keyword in room_type for keyword in ["shop", "retail", "store"]):
+                commercial_type = "retail"
+            elif "supermarket" in room_type:
+                commercial_type = "supermarket"
+            elif any(keyword in room_type for keyword in ["restaurant", "cafe", "dining"]):
+                commercial_type = "restaurant"
+            elif any(keyword in room_type for keyword in ["storage", "kitchen", "back"]):
+                commercial_type = "back_of_house"
+
+            if commercial_type and commercial_type in self.MIN_CEILING_HEIGHTS:
+                min_height = self.MIN_CEILING_HEIGHTS[commercial_type]
+                if ceiling_height < min_height:
+                    result.add_issue(ValidationIssue(
+                        category="Commercial Code",
+                        severity=Severity.ERROR,
+                        message=f"{room.get('name', room_type)} ceiling height {ceiling_height:.2f}m below minimum {min_height}m",
+                        suggestion=f"Increase ceiling height to at least {min_height}m",
+                        element_id=room.get("id", ""),
+                        value=ceiling_height,
+                        limit=min_height,
+                    ))
+
+        # Validate egress width (simplified check)
+        doors = model_data.get("doors", [])
+        for door in doors:
+            if door.get("is_exit", False):
+                width = door.get("width", 0)
+                if width < 1.4:
+                    result.add_issue(ValidationIssue(
+                        category="Fire Safety",
+                        severity=Severity.ERROR,
+                        message=f"Exit door width {width:.2f}m below minimum 1.4m",
+                        suggestion="Increase exit door width to at least 1.4m",
+                        element_id=door.get("id", ""),
+                        value=width,
+                        limit=1.4,
+                    ))
+
+
+class OfficeBuildingValidator:
+    """Validates office buildings (offices, corporate, co-working)"""
+
+    # Minimum ceiling heights (GB 50352-2019)
+    MIN_CEILING_HEIGHT = 2.7  # Net height for offices
+
+    # Area per person requirements
+    MIN_AREA_PER_PERSON = 4.0  # sqm
+
+    # Meeting room ratios
+    MEETING_ROOM_RATIO = 0.1  # 10% of office area
+
+    def validate(self, model_data: Dict, result: ValidationResult):
+        """Validate office building design"""
+        rooms = model_data.get("rooms", [])
+
+        office_area = 0
+        meeting_area = 0
+        person_count = 0
+
+        for room in rooms:
+            room_type = room.get("type", "").lower()
+            area = room.get("area", 0)
+            ceiling_height = room.get("height", 0)
+
+            # Validate office ceiling heights
+            if any(keyword in room_type for keyword in ["office", "workspace", "desk"]):
+                office_area += area
+                person_count += room.get("person_count", 0)
+
+                if ceiling_height < self.MIN_CEILING_HEIGHT:
+                    result.add_issue(ValidationIssue(
+                        category="Office Code",
+                        severity=Severity.ERROR,
+                        message=f"{room.get('name', room_type)} ceiling height {ceiling_height:.2f}m below minimum {self.MIN_CEILING_HEIGHT}m",
+                        suggestion=f"Increase ceiling height to at least {self.MIN_CEILING_HEIGHT}m",
+                        element_id=room.get("id", ""),
+                        value=ceiling_height,
+                        limit=self.MIN_CEILING_HEIGHT,
+                    ))
+
+            # Accumulate meeting room area
+            elif any(keyword in room_type for keyword in ["meeting", "conference"]):
+                meeting_area += area
+
+        # Validate area per person
+        if person_count > 0 and office_area > 0:
+            area_per_person = office_area / person_count
+            if area_per_person < self.MIN_AREA_PER_PERSON:
+                result.add_issue(ValidationIssue(
+                    category="Office Code",
+                    severity=Severity.WARNING,
+                    message=f"Office area per person {area_per_person:.2f}sqm below recommended {self.MIN_AREA_PER_PERSON}sqm",
+                    suggestion="Increase office area or reduce person count",
+                    value=area_per_person,
+                    limit=self.MIN_AREA_PER_PERSON,
+                ))
+
+        # Validate meeting room ratio
+        if office_area > 0:
+            meeting_ratio = meeting_area / office_area
+            if meeting_ratio < self.MEETING_ROOM_RATIO:
+                result.add_issue(ValidationIssue(
+                    category="Office Design",
+                    severity=Severity.INFO,
+                    message=f"Meeting room ratio {meeting_ratio:.1%} below recommended {self.MEETING_ROOM_RATIO:.0%}",
+                    suggestion=f"Increase meeting room area to at least {office_area * self.MEETING_ROOM_RATIO:.1f}sqm",
+                    value=meeting_ratio,
+                    limit=self.MEETING_ROOM_RATIO,
+                ))
+
+
+class HealthcareBuildingValidator:
+    """Validates healthcare buildings (hospitals, clinics, medical facilities)"""
+
+    # Minimum ceiling heights (GB 51039-2014)
+    MIN_CEILING_HEIGHTS = {
+        "outpatient": 3.6,
+        "inpatient": 3.3,
+        "surgery": 3.0,
+        "medical_tech": 3.6,
+        "admin": 3.0,
+    }
+
+    # Corridor widths
+    MIN_CORRIDOR_WIDTHS = {
+        "patient_corridor": 2.4,
+        "bed_movement": 2.4,
+        "service_corridor": 1.8,
+    }
+
+    # Room area requirements
+    MIN_ROOM_AREAS = {
+        "single_patient": 20.0,
+        "double_patient": 25.0,
+        "triple_patient": 30.0,
+        "operating_room": 37.0,
+        "icu": 15.0,
+    }
+
+    def validate(self, model_data: Dict, result: ValidationResult):
+        """Validate healthcare building design"""
+        rooms = model_data.get("rooms", [])
+
+        for room in rooms:
+            room_type = room.get("type", "").lower()
+            area = room.get("area", 0)
+            ceiling_height = room.get("height", 0)
+
+            # Map room types to healthcare categories
+            healthcare_type = None
+            if any(keyword in room_type for keyword in ["outpatient", "clinic", "consultation"]):
+                healthcare_type = "outpatient"
+            elif any(keyword in room_type for keyword in ["ward", "inpatient", "patient_room"]):
+                healthcare_type = "inpatient"
+            elif any(keyword in room_type for keyword in ["operating", "surgery", "or"]):
+                healthcare_type = "surgery"
+            elif any(keyword in room_type for keyword in ["lab", "imaging", "radiology"]):
+                healthcare_type = "medical_tech"
+            elif any(keyword in room_type for keyword in ["admin", "office"]):
+                healthcare_type = "admin"
+
+            # Validate ceiling heights
+            if healthcare_type and healthcare_type in self.MIN_CEILING_HEIGHTS:
+                min_height = self.MIN_CEILING_HEIGHTS[healthcare_type]
+                if ceiling_height < min_height:
+                    result.add_issue(ValidationIssue(
+                        category="Healthcare Code",
+                        severity=Severity.ERROR,
+                        message=f"{room.get('name', room_type)} ceiling height {ceiling_height:.2f}m below minimum {min_height}m",
+                        suggestion=f"Increase ceiling height to at least {min_height}m",
+                        element_id=room.get("id", ""),
+                        value=ceiling_height,
+                        limit=min_height,
+                    ))
+
+            # Validate room areas
+            if "single" in room_type and "patient" in room_type:
+                min_area = self.MIN_ROOM_AREAS["single_patient"]
+            elif "double" in room_type and "patient" in room_type:
+                min_area = self.MIN_ROOM_AREAS["double_patient"]
+            elif "triple" in room_type and "patient" in room_type:
+                min_area = self.MIN_ROOM_AREAS["triple_patient"]
+            elif any(keyword in room_type for keyword in ["operating", "surgery"]):
+                min_area = self.MIN_ROOM_AREAS["operating_room"]
+            elif "icu" in room_type:
+                min_area = self.MIN_ROOM_AREAS["icu"]
+            else:
+                min_area = None
+
+            if min_area and area < min_area:
+                result.add_issue(ValidationIssue(
+                    category="Healthcare Code",
+                    severity=Severity.ERROR,
+                    message=f"{room.get('name', room_type)} area {area:.1f}sqm below minimum {min_area}sqm",
+                    suggestion=f"Increase room area to at least {min_area}sqm",
+                    element_id=room.get("id", ""),
+                    value=area,
+                    limit=min_area,
+                ))
+
+        # Validate patient corridors (simplified)
+        corridors = [r for r in rooms if "corridor" in r.get("type", "").lower()]
+        for corridor in corridors:
+            if "patient" in corridor.get("type", "").lower():
+                width = corridor.get("width", 0)
+                min_width = self.MIN_CORRIDOR_WIDTHS["patient_corridor"]
+                if width < min_width:
+                    result.add_issue(ValidationIssue(
+                        category="Healthcare Code",
+                        severity=Severity.ERROR,
+                        message=f"Patient corridor width {width:.2f}m below minimum {min_width}m",
+                        suggestion="Increase corridor width to at least 2.4m for bed movement",
+                        element_id=corridor.get("id", ""),
+                        value=width,
+                        limit=min_width,
+                    ))
 
 
 # Utility function to convert Revit model to validation format
